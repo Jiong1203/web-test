@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>羽球收支管理系統</title>
+    <style>
+        :root { --primary: #27ae60; --secondary: #2980b9; --danger: #e74c3c; --dark: #2c3e50; --edit: #f39c12; }
+        body { font-family: sans-serif; background-color: #f4f7f9; margin: 0; padding: 15px; }
+        .container { width: 100%; max-width: 450px; margin: auto; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px; position: sticky; top: 10px; z-index: 100; }
+        h2 { text-align: center; color: var(--dark); margin: 0 0 15px 0; font-size: 1.2rem; }
+        
+        .input-group { margin-bottom: 12px; }
+        label { display: block; font-size: 0.8rem; margin-bottom: 4px; color: #666; }
+        input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 1rem; }
+        
+        .row { display: flex; gap: 8px; margin-bottom: 10px; }
+        .flex-1 { flex: 1; }
+
+        .result-box { background: #f8f9fa; border-radius: 8px; padding: 12px; margin: 15px 0; display: flex; justify-content: space-around; text-align: center; border: 1px solid #eee; }
+        .result-item div { font-size: 0.75rem; color: #888; }
+        .result-item span { font-weight: bold; font-size: 1rem; }
+
+        .btn-group { display: flex; gap: 10px; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; color: white; }
+        .btn-save { background: var(--secondary); }
+        .btn-update { background: var(--edit); display: none; } /* 預設隱藏，編輯時才出現 */
+        
+        .history-item { background: white; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; border-left: 6px solid #ccc; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .history-item.active { border-color: var(--edit) !important; background: #fffdf5; }
+        .history-info b { display: block; font-size: 1rem; }
+        .history-info small { color: #888; }
+        
+        .plus { color: var(--primary); }
+        .minus { color: var(--danger); }
+        .btn-del { background: #eee; color: #666; padding: 5px 10px; font-size: 0.7rem; width: auto; flex: none; margin-left: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="card">
+        <h2 id="formTitle">新增收支紀錄</h2>
+        <input type="hidden" id="editIndex" value="-1">
+        
+        <div class="input-group">
+            <label>日期</label>
+            <input type="date" id="date">
+        </div>
+
+        <div class="row">
+            <div class="flex-1"><label>場地時租</label><input type="number" id="cPrice" value="500" oninput="calculate()"></div>
+            <div class="flex-1"><label>時數</label><input type="number" id="hrs" value="2" oninput="calculate()"></div>
+            <div class="flex-1"><label>場數</label><input type="number" id="cCount" value="1" oninput="calculate()"></div>
+        </div>
+
+        <div class="row">
+            <div class="flex-1"><label>球價/桶</label><input type="number" id="bPrice" value="600" oninput="calculate()"></div>
+            <div class="flex-1"><label>用球數</label><input type="number" id="bUsed" value="12" oninput="calculate()"></div>
+        </div>
+
+        <div class="row">
+            <div class="flex-1"><label>每人收費</label><input type="number" id="fee" value="200" oninput="calculate()"></div>
+            <div class="flex-1"><label>人數</label><input type="number" id="players" value="8" oninput="calculate()"></div>
+        </div>
+
+        <div class="result-box">
+            <div class="result-item"><div>成本</div><span id="resCost">$0</span></div>
+            <div class="result-item"><div>收入</div><span id="resRev">$0</span></div>
+            <div class="result-item"><div>淨利</div><span id="resProfit">$0</span></div>
+        </div>
+
+        <div class="btn-group">
+            <button id="saveBtn" class="btn-save" onclick="saveRecord()">儲存新紀錄</button>
+            <button id="updateBtn" class="btn-update" onclick="updateRecord()">更新此紀錄</button>
+            <button id="cancelBtn" class="btn-del" style="display:none;" onclick="resetForm()">取消編輯</button>
+        </div>
+    </div>
+
+    <h3 style="color: var(--dark); padding-left: 5px;">歷史紀錄 (點擊可編輯)</h3>
+    <div id="historyList"></div>
+</div>
+
+<script>
+    let records = JSON.parse(localStorage.getItem('badminton_v2')) || [];
+    document.getElementById('date').valueAsDate = new Date();
+
+    function calculate() {
+        const d = {
+            date: document.getElementById('date').value,
+            cPrice: parseFloat(document.getElementById('cPrice').value) || 0,
+            hrs: parseFloat(document.getElementById('hrs').value) || 0,
+            cCount: parseFloat(document.getElementById('cCount').value) || 0,
+            bPrice: parseFloat(document.getElementById('bPrice').value) || 0,
+            bUsed: parseFloat(document.getElementById('bUsed').value) || 0,
+            fee: parseFloat(document.getElementById('fee').value) || 0,
+            players: parseFloat(document.getElementById('players').value) || 0
+        };
+
+        const cost = Math.round((d.cPrice * d.hrs * d.cCount) + ((d.bPrice / 12) * d.bUsed));
+        const rev = Math.round(d.fee * d.players);
+        const profit = rev - cost;
+
+        document.getElementById('resCost').textContent = `$${cost}`;
+        document.getElementById('resRev').textContent = `$${rev}`;
+        const pEl = document.getElementById('resProfit');
+        pEl.textContent = `$${profit}`;
+        pEl.className = profit >= 0 ? 'plus' : 'minus';
+
+        return { ...d, cost, rev, profit };
+    }
+
+    function saveRecord() {
+        const data = calculate();
+        records.unshift(data);
+        localStorage.setItem('badminton_v2', JSON.stringify(records));
+        render();
+        resetForm();
+    }
+
+    function editRecord(index) {
+        const item = records[index];
+        document.getElementById('editIndex').value = index;
+        document.getElementById('date').value = item.date;
+        document.getElementById('cPrice').value = item.cPrice;
+        document.getElementById('hrs').value = item.hrs;
+        document.getElementById('cCount').value = item.cCount;
+        document.getElementById('bPrice').value = item.bPrice;
+        document.getElementById('bUsed').value = item.bUsed;
+        document.getElementById('fee').value = item.fee;
+        document.getElementById('players').value = item.players;
+
+        document.getElementById('formTitle').innerText = "正在編輯紀錄 ✏️";
+        document.getElementById('saveBtn').style.display = 'none';
+        document.getElementById('updateBtn').style.display = 'block';
+        document.getElementById('cancelBtn').style.display = 'block';
+        
+        calculate();
+        render(); // 刷新以顯示 active 狀態
+    }
+
+    function updateRecord() {
+        const index = document.getElementById('editIndex').value;
+        records[index] = calculate();
+        localStorage.setItem('badminton_v2', JSON.stringify(records));
+        resetForm();
+        render();
+    }
+
+    function deleteRecord(e, index) {
+        e.stopPropagation(); // 防止觸發編輯
+        if(confirm("確定刪除這筆紀錄嗎？")) {
+            records.splice(index, 1);
+            localStorage.setItem('badminton_v2', JSON.stringify(records));
+            render();
+            if(document.getElementById('editIndex').value == index) resetForm();
+        }
+    }
+
+    function resetForm() {
+        document.getElementById('editIndex').value = "-1";
+        document.getElementById('formTitle').innerText = "新增收支紀錄";
+        document.getElementById('saveBtn').style.display = 'block';
+        document.getElementById('updateBtn').style.display = 'none';
+        document.getElementById('cancelBtn').style.display = 'none';
+        document.getElementById('date').valueAsDate = new Date();
+        calculate();
+        render();
+    }
+
+    function render() {
+        const list = document.getElementById('historyList');
+        const activeIdx = document.getElementById('editIndex').value;
+        list.innerHTML = '';
+        
+        records.forEach((item, i) => {
+            const div = document.createElement('div');
+            div.className = `history-item ${activeIdx == i ? 'active' : ''}`;
+            div.style.borderLeftColor = item.profit >= 0 ? '#27ae60' : '#e74c3c';
+            div.onclick = () => editRecord(i);
+            div.innerHTML = `
+                <div class="history-info">
+                    <b>${item.date}</b>
+                    <small>收:${item.rev} / 支:${item.cost} / 人數:${item.players}</small>
+                </div>
+                <div style="display:flex; align-items:center;">
+                    <span class="${item.profit >= 0 ? 'plus' : 'minus'}" style="font-weight:bold; font-size:1.1rem;">
+                        ${item.profit >= 0 ? '+' : ''}${item.profit}
+                    </span>
+                    <button class="btn-del" onclick="deleteRecord(event, ${i})">刪除</button>
+                </div>
+            `;
+            list.appendChild(div);
+        });
+    }
+
+    calculate();
+    render();
+</script>
+
+</body>
+</html>
